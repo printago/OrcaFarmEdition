@@ -5,15 +5,17 @@
   <key>CFBundleExecutable</key>
   <string>@SLIC3R_APP_KEY@</string>
   <key>CFBundleGetInfoString</key>
-  <string>@SLIC3R_APP_NAME@ Copyright(C) 2026 OrcaSlicer Pte Ltd All Rights Reserved</string>
+  <string>Orca Farm Edition, based on @SLIC3R_APP_NAME@. Copyright(C) 2026 OrcaSlicer Pte Ltd and Printago. AGPL-3.0.</string>
   <key>CFBundleIconFile</key>
   <string>images/OrcaSlicer.icns</string>
   <key>CFBundleName</key>
-  <string>@SLIC3R_APP_KEY@</string>
+  <string>Orca Farm Edition</string>
+  <key>CFBundleDisplayName</key>
+  <string>Orca Farm Edition</string>
   <key>CFBundleShortVersionString</key>
   <string>@SLIC3R_APP_NAME@ @SLIC3R_BUILD_ID@</string>
   <key>CFBundleIdentifier</key>
-  <string>com.orcaslicer.OrcaSlicer</string>
+  <string>io.printago.OrcaFarmEdition</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundlePackageType</key>

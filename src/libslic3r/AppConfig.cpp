@@ -58,7 +58,7 @@ using namespace nlohmann;
 
 namespace Slic3r {
 
-static const std::string VERSION_CHECK_URL = "https://check-version.orcaslicer.com/latest";
+static const std::string VERSION_CHECK_URL = "https://api.github.com/repos/printago/OrcaFarmEdition/releases";
 static const std::string PROFILE_UPDATE_URL = "https://check-version.orcaslicer.com/profile";
 
 constexpr const char* CONFIG_ORCA_UPDATER_URL = "orca_updater_url";
@@ -151,8 +151,9 @@ void AppConfig::set_defaults()
 
         // Printago print-farm integration: off by default. When enabled, a "Printago" web tab
         // is shown and the "Upload to Printago" menu actions become available.
+        // Farm Edition: the Printago integration is the point of this build, so it starts enabled.
         if (get("enable_printago").empty())
-            set_bool("enable_printago", false);
+            set_bool("enable_printago", true);
 
 #ifdef _WIN32
         if (get("associate_3mf").empty())

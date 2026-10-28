@@ -1,0 +1,117 @@
+# Orca Farm Edition (printago/OrcaFarmEdition) only. Publishes the binaries a "Build all" run
+# produced: automatically to the rolling "nightly" pre-release after every push build of main,
+# or, by manual dispatch with a tag, to a proper GitHub release. Upstream's deploy-nightly and
+# publish_release.yml stay untouched so merges from OrcaSlicer/OrcaSlicer remain clean.
+name: Farm Edition release
+
+on:
+  workflow_run:
+    workflows: ["Build all"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Run ID of the "Build all" workflow to publish (the number in the Actions run URL)'
+        required: true
+        type: string
+      tag:
+        description: 'Release tag to publish to, e.g. v2.5.0-farm.1 (created if missing). Leave empty to refresh the nightly pre-release.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: farm-edition-release-${{ inputs.tag || 'nightly' }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish binaries
+    # Pushes only (a pull_request build must never reach a release), and never on a fork of the fork.
+    if: >-
+      github.repository == 'printago/OrcaFarmEdition' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion != 'cancelled'))
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
+      TAG: ${{ inputs.tag || 'nightly' }}
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Describe the source run
+        run: |
+          info=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json workflowName,conclusion,headBranch,headSha,url)
+          echo "$info" | jq .
+          [ "$(echo "$info" | jq -r .workflowName)" = "Build all" ] || { echo "::error::Run $RUN_ID is not a 'Build all' run"; exit 1; }
+          echo "SOURCE_SHA=$(echo "$info" | jq -r .headSha)" >> "$GITHUB_ENV"
+          echo "SOURCE_URL=$(echo "$info" | jq -r .url)" >> "$GITHUB_ENV"
+          echo "SOURCE_CONCLUSION=$(echo "$info" | jq -r .conclusion)" >> "$GITHUB_ENV"
+
+      - name: Download build artifacts
+        run: |
+          mkdir -p artifacts
+          # Windows_V* (not Windows_*) keeps the MSIX Store artifact out.
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --dir artifacts \
+            -p 'OrcaSlicer_Windows_V*' \
+            -p 'OrcaSlicer_Mac_universal_*' \
+            -p 'OrcaSlicer_Linux_ubuntu_*' \
+            -p 'OrcaSlicer-Linux-flatpak_*' \
+            -p 'PDB' || echo "::warning::Some artifact patterns matched nothing (a platform leg may have failed)."
+          echo "Downloaded artifact folders:"; ls -1 artifacts || true
+
+      - name: Assemble release assets
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          brand() { # OrcaSlicer_* -> OrcaFarmEdition_*, keeping everything after the prefix
+            local n; n=$(basename "$1"); n="${n/#OrcaSlicer_/OrcaFarmEdition_}"; n="${n/#OrcaSlicer-/OrcaFarmEdition-}"
+            if [ "$TAG" = nightly ]; then n=$(echo "$n" | sed -E 's/_V[0-9][^_]*(_|\.)/_nightly\1/'); fi
+            echo "$n"
+          }
+          while IFS= read -r f; do cp -v "$f" "upload/$(brand "$f")"; done < <(find artifacts -type f \( -name '*_Windows_Installer_*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.flatpak' -o -name 'Debug_PDB_*.7z' \) ! -path '*_portable*')
+          mapfile -t portable_dirs < <(find artifacts -maxdepth 1 -type d -name 'OrcaSlicer_Windows_*_portable')
+          for d in "${portable_dirs[@]}"; do
+            ( cd "$d" && zip -qr "$GITHUB_WORKSPACE/upload/$(brand "$d").zip" . ); echo "Zipped portable -> $(brand "$d").zip"
+          done
+          echo "Assets:"; ls -lh upload
+          [ -n "$(ls -A upload)" ] || { echo "::error::No assets assembled from run $RUN_ID."; exit 1; }
+          (cd upload && sha256sum * > "OrcaFarmEdition_${TAG}_SHA256SUMS.txt")
+
+      - name: Create or refresh the release
+        run: |
+          short=$(echo "$SOURCE_SHA" | cut -c1-12)
+          if [ "$TAG" = nightly ]; then
+            title="Orca Farm Edition nightly"
+            body=$(printf 'Rolling pre-release of Orca Farm Edition built from `main`.\n\nSource commit: %s\nBuild run: %s\nBuild conclusion: %s\n\nAssets are replaced on every successful push build; do not link to them as stable downloads.' "$SOURCE_SHA" "$SOURCE_URL" "$SOURCE_CONCLUSION")
+            flags=(--prerelease)
+          else
+            title="Orca Farm Edition $TAG"
+            body=$(printf 'Orca Farm Edition %s\n\nSource commit: %s\nBuild run: %s' "$TAG" "$SOURCE_SHA" "$SOURCE_URL")
+            flags=(--draft)
+            case "$TAG" in *-*) flags+=(--prerelease);; esac
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$title" --notes "$body"
+            if [ "$TAG" = nightly ]; then
+              # Move the tag to the commit that was built.
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/nightly" -f sha="$SOURCE_SHA" -F force=true >/dev/null
+            fi
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --title "$title" --notes "$body" "${flags[@]}"
+          fi
+
+      - name: Upload assets
+        run: |
+          if [ "$TAG" = nightly ]; then
+            # Drop stale assets so a renamed or removed platform does not linger.
+            for a in $(gh release view nightly --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'); do
+              [ -e "upload/$a" ] || gh release delete-asset nightly "$a" --repo "$GITHUB_REPOSITORY" --yes || true
+            done
+          fi
+          gh release upload "$TAG" upload/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'

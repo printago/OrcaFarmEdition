@@ -3,6 +3,11 @@
 
 set(SLIC3R_APP_NAME "OrcaSlicer")
 set(SLIC3R_APP_KEY "OrcaSlicer")
+# Farm Edition: name of the per-user data directory and single-instance key, kept separate from
+# stock OrcaSlicer so both can be installed and run side by side. SLIC3R_APP_KEY stays "OrcaSlicer"
+# because it is written into g-code headers, 3MF metadata and bundle paths that printers and the
+# build scripts rely on.
+set(SLIC3R_APP_DATA_DIR_NAME "OrcaFarmEdition")
 
 if(NOT DEFINED BBL_INTERNAL_TESTING)
 set(BBL_INTERNAL_TESTING "0")
