@@ -52,6 +52,7 @@
 #define TAB_ID_MULTI_DEVICE  "multi_device"
 #define TAB_ID_PROJECT       "project"
 #define TAB_ID_CALIBRATION   "calibration"
+#define TAB_ID_PRINTAGO      "printago"
 
 #define ENABEL_PRINT_ALL 0
 
@@ -493,6 +494,9 @@ public:
     void RunScript(wxString js);
 
     //SoftFever
+    void show_device(bool bBBLPrinter);
+    // Printago: add/remove the Printago web tab (hosting the embedded Printago app).
+    void show_printago(bool show, bool select_tab = false);
     void show_device(bool should_use_native);
     void fit_tab_labels(); // ORCA
     // True while either of the two tabs backed by m_plater is selected.
@@ -530,6 +534,10 @@ public:
     LazyPage<MultiMachinePage>* m_multi_machine_page{ nullptr };
     LazyPage<ProjectPanel>* m_project_page{ nullptr };
 
+    CalibrationPanel*     m_calibration{ nullptr };
+    WebViewPanel*         m_webview { nullptr };
+    PrinterWebView*       m_printer_view{nullptr};
+    PrinterWebView*       m_printago_view{nullptr};
     LazyPage<CalibrationPanel>* m_calibration_page{ nullptr };
     LazyPage<WebViewPanel>* m_home_page { nullptr };
     LazyPage<PrinterWebView>* m_printer_view_page{nullptr};

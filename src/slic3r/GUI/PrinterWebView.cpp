@@ -2,6 +2,7 @@
 
 #include "PrinterWebViewHandler.hpp"
 #include "I18N.hpp"
+#include "PrintagoTabBridge.hpp"
 
 #include "slic3r/GUI/PrinterWebView.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
@@ -197,7 +198,15 @@ void PrinterWebView::create_browser()
     m_browser->Bind(wxEVT_WEBVIEW_ERROR, &PrinterWebView::OnError, this);
     m_browser->Bind(wxEVT_WEBVIEW_LOADED, &PrinterWebView::OnLoaded, this);
     m_browser->Bind(wxEVT_WEBVIEW_NEWWINDOW, &PrinterWebView::OnNewWindow, this);
+    m_browser->Bind(wxEVT_WEBVIEW_NAVIGATING, &PrinterWebView::OnNavigating, this);
     m_browser->Bind(wxEVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, &PrinterWebView::OnScriptMessage, this);
+    if (!m_user_agent.empty())
+        m_browser->SetUserAgent(m_user_agent);
+    if (m_printago_bridge) {
+        // reset_browser() replaced the view the bridge was installed on; rebuild it on the new one.
+        m_printago_bridge.reset();
+        enable_printago_bridge(m_printago_plater);
+    }
     update_mode();
 }
 
@@ -246,6 +255,32 @@ void PrinterWebView::load_url(wxString& url, wxString apikey)
         m_url_deferred = url;
     }
     //m_browser->SetFocus();
+    UpdateState();
+}
+
+void PrinterWebView::load_url_now(const wxString& url)
+{
+    if (m_browser == nullptr)
+        return;
+    m_url = url;
+    m_apikey.clear();
+    m_apikey_sent = false;
+    m_url_loaded  = false;
+    m_host_type   = active_host_type();
+    m_handler     = create_printer_webview_handler(*this);
+    // Keep nothing pending: the deferred-URL path can be cleared by the initial about:blank
+    // OnLoaded before Show() ever consumes it.
+    m_url_deferred.clear();
+    // Defer the actual navigation one event-loop turn. Any script-handler registration queued via
+    // CallAfter before this call (the Printago bridge's "printago" channel) must land before the
+    // page starts loading; a synchronous LoadURL here would begin mid-registration. CallAfter is
+    // FIFO, so the order is guaranteed: register handler -> navigate.
+    m_browser->CallAfter([this, url]() {
+        if (m_browser == nullptr)
+            return;
+        BOOST_LOG_TRIVIAL(info) << "PrinterWebView: navigating to " << url.ToUTF8().data();
+        m_browser->LoadURL(url);
+    });
     UpdateState();
 }
 
@@ -357,6 +392,7 @@ void PrinterWebView::OnError(wxWebViewEvent &evt)
 
 void PrinterWebView::OnLoaded(wxWebViewEvent& evt)
 {
+    BOOST_LOG_TRIVIAL(info) << "PrinterWebView: loaded " << WebView::RedactUrl(evt.GetURL()).ToUTF8().data();
     // The web view's initial empty document (about:blank on WebKit) is not the requested page.
     if (evt.GetURL().IsEmpty() || evt.GetURL() == "about:blank")
         return;
@@ -379,8 +415,35 @@ void PrinterWebView::OnNewWindow(wxWebViewEvent& evt)
   evt.Veto();
 }
 
+void PrinterWebView::OnNavigating(wxWebViewEvent& evt)
+{
+  // Give the optional intercept a chance to claim (and veto) this navigation, e.g. the Printago
+  // orcaslicer:// auth callback. Unset by default, so other webviews are unaffected.
+  if (m_nav_intercept && m_nav_intercept(evt.GetURL()))
+    evt.Veto();
+}
+
+void PrinterWebView::enable_printago_bridge(Plater* plater)
+{
+    if (m_printago_bridge || m_browser == nullptr)
+        return;
+    // Always allow inspecting the Printago tab (right-click -> Inspect Element): the embedded web
+    // app is remote and its failures are otherwise invisible from the native side.
+    m_browser->EnableAccessToDevTools(true);
+    m_printago_plater = plater;
+    m_printago_bridge = std::make_unique<PrintagoTabBridge>(m_browser, plater);
+}
+
 void PrinterWebView::OnScriptMessage(wxWebViewEvent& evt)
 {
+  // When the Printago bridge is attached this webview IS the Printago tab, so route every script
+  // message to it. Do NOT filter on evt.GetMessageHandler(): the WebKit backend does not reliably
+  // populate the handler name, and a swallowed page:ready leaves the app waiting for host:init on a
+  // blank page. The bridge ignores non-Printago messages; the printer handler is irrelevant here.
+  if (m_printago_bridge) {
+    m_printago_bridge->on_message(evt.GetString());
+    return;
+  }
   if (m_handler != nullptr)
     m_handler->on_script_message(evt);
 }

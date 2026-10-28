@@ -58,6 +58,7 @@ add_executable(${_TEST_NAME}_tests
     test_sequential_clearance.cpp
     test_object_list.cpp
     ../fff_print/test_helpers.cpp
+    test_printago.cpp
     )
 
 if (SLIC3R_CAD)
