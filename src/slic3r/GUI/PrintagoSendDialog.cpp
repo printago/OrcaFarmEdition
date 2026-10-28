@@ -6,6 +6,7 @@
 #include <boost/filesystem/path.hpp>
 #include <boost/log/trivial.hpp>
 
+#include "GUI.hpp"
 #include "GUI_App.hpp"
 #include "I18N.hpp"
 #include "NotificationManager.hpp"

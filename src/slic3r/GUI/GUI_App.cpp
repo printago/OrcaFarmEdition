@@ -9313,10 +9313,6 @@ void GUI_App::open_preferences(PreferencesTab tab, const std::string& highlight_
     if (mainframe && is_printago_enabled() != printago_enabled_before)
         mainframe->show_printago(is_printago_enabled(), /*select_tab*/ is_printago_enabled());
 
-    const bool opengl_fxaa_changed = app_config->get(opengl_fxaa_setting_key) != previous_opengl_fxaa;
-    const bool opengl_fps_cap_changed = app_config->get(opengl_fps_cap_setting_key) != previous_opengl_fps_cap;
-    const bool opengl_show_fps_overlay_changed = app_config->get(opengl_show_fps_overlay_setting_key) != previous_opengl_show_fps_overlay;
-    if ((opengl_fxaa_changed || opengl_fps_cap_changed || opengl_show_fps_overlay_changed) && !need_recreate_gui && this->plater_ != nullptr) {
     bool opengl_render_settings_changed = false;
     for (size_t i = 0; i < previous_opengl_render_settings.size(); ++i)
         opengl_render_settings_changed |= app_config->get(opengl_render_setting_keys[i]) != previous_opengl_render_settings[i];
