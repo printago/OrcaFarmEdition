@@ -47,5 +47,6 @@ else
   ../appimagetool.AppImage . $([ -n "${container}" ] && echo '--appimage-extract-and-run')
 fi
 
-mv @SLIC3R_APP_KEY@-$(uname -m).AppImage ${APP_IMAGE}
+# appimagetool names the file after the desktop entry Name= (spaces become underscores).
+mv ./*-$(uname -m).AppImage "${APP_IMAGE}"
 chmod +x ${APP_IMAGE}

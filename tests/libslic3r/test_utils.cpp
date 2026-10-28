@@ -587,6 +587,6 @@ TEST_CASE("xdg_config_dir follows XDG_CONFIG_HOME and falls back to ~/.config", 
 TEST_CASE("default_data_dir is the XDG config dir without a portable data_dir folder", "[utils]") {
     ScopedEnvVar xdg("XDG_CONFIG_HOME", "/tmp/xdg-test");
     // A data_dir folder next to the test binary would make it a portable install; none is expected.
-    CHECK(Slic3r::default_data_dir() == "/tmp/xdg-test/" SLIC3R_APP_KEY);
+    CHECK(Slic3r::default_data_dir() == "/tmp/xdg-test/" SLIC3R_APP_DATA_DIR_NAME);
 }
 #endif
