@@ -200,14 +200,15 @@ void PrinterWebView::create_browser()
     m_browser->Bind(wxEVT_WEBVIEW_NEWWINDOW, &PrinterWebView::OnNewWindow, this);
     m_browser->Bind(wxEVT_WEBVIEW_NAVIGATING, &PrinterWebView::OnNavigating, this);
     m_browser->Bind(wxEVT_WEBVIEW_SCRIPT_MESSAGE_RECEIVED, &PrinterWebView::OnScriptMessage, this);
+    update_mode();
     if (!m_user_agent.empty())
         m_browser->SetUserAgent(m_user_agent);
     if (m_printago_bridge) {
-        // reset_browser() replaced the view the bridge was installed on; rebuild it on the new one.
+        // reset_browser() replaced the view the bridge was installed on; rebuild it on the new one
+        // (after update_mode(), which would otherwise override the bridge's devtools setting).
         m_printago_bridge.reset();
         enable_printago_bridge(m_printago_plater);
     }
-    update_mode();
 }
 
 void PrinterWebView::reset_browser()
@@ -267,7 +268,9 @@ void PrinterWebView::load_url_now(const wxString& url)
     m_apikey_sent = false;
     m_url_loaded  = false;
     m_host_type   = active_host_type();
-    m_handler     = create_printer_webview_handler(*this);
+    // The Printago tab is not a printer host page: no OctoPrint/Moonraker/Elegoo handler should
+    // inject into it. The bridge owns its script messages.
+    m_handler     = m_printago_bridge ? nullptr : create_printer_webview_handler(*this);
     // Keep nothing pending: the deferred-URL path can be cleared by the initial about:blank
     // OnLoaded before Show() ever consumes it.
     m_url_deferred.clear();
