@@ -43,6 +43,12 @@ jobs:
       TAG: ${{ inputs.tag || 'nightly' }}
       SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
+      - name: Checkout (for moving the nightly tag)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
       - name: Describe the source run
         run: |
           info=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json workflowName,conclusion,headBranch,headSha,url)
@@ -98,8 +104,11 @@ jobs:
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$title" --notes "$body"
             if [ "$TAG" = nightly ]; then
-              # Move the tag to the commit that was built.
-              gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/nightly" -f sha="$SOURCE_SHA" -F force=true >/dev/null
+              # Move the tag to the commit that was built. The REST refs endpoint answers 403 for
+              # GITHUB_TOKEN here, so push the ref with git instead; a failure must not block the assets.
+              git fetch --depth 1 origin "$SOURCE_SHA" \
+                && git push --force origin "$SOURCE_SHA:refs/tags/nightly" \
+                || echo "::warning::Could not move the nightly tag to $SOURCE_SHA"
             fi
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --title "$title" --notes "$body" "${flags[@]}"
